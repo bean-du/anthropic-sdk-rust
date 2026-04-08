@@ -181,23 +181,27 @@ impl MessageStream {
                                 }
                             }
                             crate::types::MessageStreamEvent::ContentBlockDelta { delta, index } => {
-                                if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
-                                    if let Some(content_block) = msg.content.get_mut(*index) {
-                                        if let (crate::types::ContentBlock::Text { text }, 
-                                               crate::types::ContentBlockDelta::TextDelta { text: delta_text }) = 
-                                            (content_block, delta) {
-                                            text.push_str(delta_text);
+                                // 累积 delta 到对应的 content block
+                                fn apply_delta(content: &mut [crate::types::ContentBlock], index: usize, delta: &crate::types::ContentBlockDelta) {
+                                    if let Some(block) = content.get_mut(index) {
+                                        match (block, delta) {
+                                            (crate::types::ContentBlock::Text { text },
+                                             crate::types::ContentBlockDelta::TextDelta { text: delta_text }) => {
+                                                text.push_str(delta_text);
+                                            }
+                                            (crate::types::ContentBlock::Thinking { thinking, .. },
+                                             crate::types::ContentBlockDelta::ThinkingDelta { thinking: delta_thinking }) => {
+                                                thinking.push_str(delta_thinking);
+                                            }
+                                            _ => {}
                                         }
                                     }
                                 }
+                                if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
+                                    apply_delta(&mut msg.content, *index, delta);
+                                }
                                 if let Some(ref mut msg) = final_message.as_mut() {
-                                    if let Some(content_block) = msg.content.get_mut(*index) {
-                                        if let (crate::types::ContentBlock::Text { text }, 
-                                               crate::types::ContentBlockDelta::TextDelta { text: delta_text }) = 
-                                            (content_block, delta) {
-                                            text.push_str(delta_text);
-                                        }
-                                    }
+                                    apply_delta(&mut msg.content, *index, delta);
                                 }
                             }
                             crate::types::MessageStreamEvent::MessageDelta { delta, usage } => {
