@@ -49,22 +49,37 @@ pub enum Role {
 pub enum ContentBlock {
     #[serde(rename = "text")]
     Text { text: String },
-    
+
     #[serde(rename = "image")]
     Image { source: ImageSource },
-    
+
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
         name: String,
         input: serde_json::Value,
     },
-    
+
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_use_id: String,
         content: Option<String>,
         is_error: Option<bool>,
+    },
+
+    /// Extended thinking block (Claude 3.5+ / compatible APIs).
+    #[serde(rename = "thinking")]
+    Thinking {
+        thinking: String,
+        #[serde(default)]
+        signature: Option<String>,
+    },
+
+    /// Redacted thinking block (when thinking content is filtered).
+    #[serde(rename = "redacted_thinking")]
+    RedactedThinking {
+        #[serde(default)]
+        data: Option<String>,
     },
 }
 
