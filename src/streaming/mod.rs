@@ -146,11 +146,14 @@ impl MessageStream {
         let errored = Arc::new(Mutex::new(false));
         let request_id = http_stream.request_id().map(|s| s.to_string());
         
+        let event_handlers: Arc<Mutex<HashMap<EventType, Vec<EventHandler>>>> = Arc::new(Mutex::new(HashMap::new()));
+
         // Clone references for the background task
         let current_message_clone = current_message.clone();
         let ended_clone = ended.clone();
         let errored_clone = errored.clone();
         let event_sender_clone = event_sender.clone();
+        let handlers_clone = event_handlers.clone();
         
         // Spawn task to process HTTP stream events
         tokio::spawn(async move {
@@ -247,7 +250,22 @@ impl MessageStream {
                             _ => {}
                         }
                         
-                        // Send event to broadcast channel for callbacks
+                        // Invoke registered event handlers (on_stream_event callbacks)
+                        {
+                            let handlers = handlers_clone.lock().unwrap();
+                            let current_msg = current_message_clone.lock().unwrap();
+                            if let Some(stream_handlers) = handlers.get(&EventType::StreamEvent) {
+                                for handler in stream_handlers {
+                                    if let EventHandler::StreamEvent(callback) = handler {
+                                        if let Some(ref msg) = *current_msg {
+                                            callback(&event, msg);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Send event to broadcast channel
                         let _ = event_sender_clone.send(event);
                     }
                     Err(e) => {
@@ -261,7 +279,7 @@ impl MessageStream {
         
         Ok(Self {
             current_message,
-            event_handlers: Arc::new(Mutex::new(HashMap::new())),
+            event_handlers, // 共享——后台 task 和回调注册用同一个
             event_sender,
             event_stream: BroadcastStream::new(event_receiver),
             completion_sender: None, // Already consumed by the task
