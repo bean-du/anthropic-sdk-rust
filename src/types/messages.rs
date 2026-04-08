@@ -156,6 +156,25 @@ pub struct MessageCreateParams {
     /// Additional metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<std::collections::HashMap<String, String>>,
+
+    /// Extended thinking configuration (Claude 3.5+ / compatible APIs).
+    ///
+    /// When enabled, the model will include thinking blocks in its response,
+    /// showing its reasoning process before producing the final output.
+    ///
+    /// Example: `Some(ThinkingConfig { r#type: "enabled".into(), budget_tokens: 10000 })`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<ThinkingConfig>,
+}
+
+/// Configuration for extended thinking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThinkingConfig {
+    /// Must be "enabled" to activate thinking.
+    #[serde(rename = "type")]
+    pub r#type: String,
+    /// Maximum tokens the model can use for thinking (not counted in max_tokens).
+    pub budget_tokens: u32,
 }
 
 /// A single message in the conversation
@@ -238,6 +257,7 @@ impl MessageCreateBuilder {
                 tools: None,
                 tool_choice: None,
                 metadata: None,
+                thinking: None,
             },
         }
     }
@@ -314,7 +334,19 @@ impl MessageCreateBuilder {
         self.params.metadata = Some(metadata);
         self
     }
-    
+
+    /// Enable extended thinking with a token budget.
+    ///
+    /// When enabled, the model includes thinking blocks showing its reasoning process.
+    /// `budget_tokens` is the max tokens for thinking (not counted in `max_tokens`).
+    pub fn thinking(mut self, budget_tokens: u32) -> Self {
+        self.params.thinking = Some(ThinkingConfig {
+            r#type: "enabled".to_string(),
+            budget_tokens,
+        });
+        self
+    }
+
     /// Build the message creation parameters
     pub fn build(self) -> MessageCreateParams {
         self.params
