@@ -16,7 +16,7 @@ pub use shared::{RequestId, Usage, ServerToolUsage, HasRequestId};
 pub use messages::{
     Message, Role, ContentBlock, ImageSource, StopReason,
     MessageCreateParams, MessageParam, MessageContent, ContentBlockParam,
-    MessageCreateBuilder, ThinkingConfig,
+    MessageCreateBuilder, ThinkingConfig, ToolResultContentParam,
 };
 
 // Model types

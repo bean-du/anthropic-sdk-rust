@@ -2,6 +2,34 @@ use serde::{Deserialize, Serialize};
 use crate::types::shared::{RequestId, Usage};
 use crate::files::{File, FileError};
 
+/// Content of a `tool_result` block.
+///
+/// The Messages API accepts either a plain string or an array of content
+/// blocks (text / image) here. `Text` is untagged-first so it serializes as
+/// a bare JSON string — wire-compatible with the previous `Option<String>`
+/// modeling; existing string payloads round-trip byte-identically.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ToolResultContentParam {
+    /// Plain text result (serializes as a bare JSON string).
+    Text(String),
+    /// Rich content blocks — required for returning images (e.g. screenshots
+    /// from a computer-use tool) so the model can actually see them.
+    Blocks(Vec<crate::types::tools::ToolResultBlock>),
+}
+
+impl From<String> for ToolResultContentParam {
+    fn from(s: String) -> Self {
+        Self::Text(s)
+    }
+}
+
+impl From<&str> for ToolResultContentParam {
+    fn from(s: &str) -> Self {
+        Self::Text(s.to_string())
+    }
+}
+
 /// A message from Claude
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Message {
@@ -63,7 +91,7 @@ pub enum ContentBlock {
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_use_id: String,
-        content: Option<String>,
+        content: Option<ToolResultContentParam>,
         is_error: Option<bool>,
     },
 
@@ -214,7 +242,7 @@ pub enum ContentBlockParam {
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_use_id: String,
-        content: Option<String>,
+        content: Option<ToolResultContentParam>,
         is_error: Option<bool>,
     },
 
@@ -470,5 +498,56 @@ mod tests {
             MessageContent::Text(text) => assert_eq!(text, "Hello"),
             _ => panic!("Expected text content"),
         }
+    }
+
+    #[test]
+    fn tool_result_text_content_serializes_as_bare_string() {
+        // Wire compat: Text variant must serialize exactly like the previous
+        // Option<String> modeling — a bare JSON string.
+        let block = ContentBlockParam::ToolResult {
+            tool_use_id: "tu_1".to_string(),
+            content: Some(ToolResultContentParam::Text("ok".to_string())),
+            is_error: None,
+        };
+        let json = serde_json::to_value(&block).unwrap();
+        assert_eq!(json["content"], serde_json::json!("ok"));
+    }
+
+    #[test]
+    fn tool_result_text_content_deserializes_from_bare_string() {
+        // Old-format payloads (string content) must keep parsing.
+        let json = serde_json::json!({
+            "type": "tool_result",
+            "tool_use_id": "tu_1",
+            "content": "ok",
+            "is_error": null
+        });
+        let block: ContentBlockParam = serde_json::from_value(json).unwrap();
+        match block {
+            ContentBlockParam::ToolResult { content, .. } => {
+                assert_eq!(content, Some(ToolResultContentParam::Text("ok".to_string())));
+            }
+            other => panic!("expected ToolResult, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_image_blocks_serialize_as_block_array() {
+        use crate::types::tools::{ImageSource as ToolImageSource, ToolResultBlock};
+        let block = ContentBlockParam::ToolResult {
+            tool_use_id: "tu_1".to_string(),
+            content: Some(ToolResultContentParam::Blocks(vec![ToolResultBlock::Image {
+                source: ToolImageSource::Base64 {
+                    media_type: "image/png".to_string(),
+                    data: "iVBORw0KGgo=".to_string(),
+                },
+            }])),
+            is_error: None,
+        };
+        let json = serde_json::to_value(&block).unwrap();
+        assert!(json["content"].is_array(), "content should be a block array");
+        assert_eq!(json["content"][0]["type"], "image");
+        assert_eq!(json["content"][0]["source"]["type"], "base64");
+        assert_eq!(json["content"][0]["source"]["data"], "iVBORw0KGgo=");
     }
 } 

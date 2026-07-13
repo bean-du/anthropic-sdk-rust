@@ -153,25 +153,18 @@ impl ToolConversation {
         
         // Convert tool results to content blocks
         let tool_result_blocks: Vec<ContentBlockParam> = results.into_iter().map(|result| {
-            // Convert ToolResultContent to String for ContentBlockParam::ToolResult
-            let content_string = match result.content {
-                crate::types::ToolResultContent::Text(text) => Some(text),
-                crate::types::ToolResultContent::Json(json) => Some(json.to_string()),
-                crate::types::ToolResultContent::Blocks(blocks) => {
-                    // Convert blocks to a simple text representation
-                    let text_parts: Vec<String> = blocks.into_iter().map(|block| {
-                        match block {
-                            crate::types::ToolResultBlock::Text { text } => text,
-                            crate::types::ToolResultBlock::Image { .. } => "[Image]".to_string(),
-                        }
-                    }).collect();
-                    Some(text_parts.join("\n"))
-                }
+            use crate::types::messages::ToolResultContentParam;
+            let content = match result.content {
+                crate::types::ToolResultContent::Text(text) => Some(ToolResultContentParam::Text(text)),
+                crate::types::ToolResultContent::Json(json) => Some(ToolResultContentParam::Text(json.to_string())),
+                // Rich blocks (text / image) pass through untouched so the
+                // model can actually see returned images.
+                crate::types::ToolResultContent::Blocks(blocks) => Some(ToolResultContentParam::Blocks(blocks)),
             };
-            
+
             ContentBlockParam::ToolResult {
                 tool_use_id: result.tool_use_id,
-                content: content_string,
+                content,
                 is_error: result.is_error,
             }
         }).collect();
